@@ -1,0 +1,89 @@
+import os
+import time
+import colorama
+from colorama import Fore, Style
+import diskmanager as dm
+from datetime import datetime
+
+# Colorama'yı başlat
+colorama.init(autoreset=True)
+
+class KineticRootFS:
+    def __init__(self):
+        self.ver = "1.2.0-kinetic"
+        # Senin projende kullanılan ana yol
+        self.root_path = "./"
+        
+        # Senin belirttiğin "olsun" dediğin tüm klasör yapısı
+        self.vfs_nodes = [
+            "../bin",                  # Sistem araçları
+            "../root",                 # Root kullanıcı dizini
+            "../dev",                  # Sanal cihazlar ve check dosyaları
+            "../etc",                  # Yapılandırma dosyaları
+            "../mnt",                  # Mount noktaları
+            "../var",                  # Değişken veriler
+            "../var/log",              # Sistem logları
+            "../set",                  # Ayarlar
+            "../set/secret/ring/0",    # Kullanıcı veritabanı (giris.py ve addu.py için)
+            "../icons",                # Arayüz ikonları (desk.py için)
+            "../sounds",               # Sistem sesleri
+            "../packages"         # Jetpack paket deposu
+        ]
+
+    def log(self, status, message, color=Fore.WHITE):
+        timestamp = datetime.now().strftime("%H:%M:%S")
+        print(f"{Fore.LIGHTBLACK_EX}[{timestamp}]{Style.RESET_ALL} {color}[{status}]{Style.RESET_ALL} {message}")
+
+    def boot_sequence(self):
+        print(f"\n{Fore.CYAN}{Style.BRIGHT}=== KINETIC RootFS v{self.ver} ==={Style.RESET_ALL}")
+        time.sleep(0.3)
+        
+        self.log("INFO", "Initializing RootFS hierarchy...")
+
+        # Klasör yapısını kontrol et ve eksikleri otomatik oluştur
+        for node in self.vfs_nodes:
+            full_path = os.path.join(self.root_path, node)
+            if not os.path.exists(full_path):
+                self.log("NEW ", f"Node '{node}' missing. Creating...", Fore.YELLOW)
+                os.makedirs(full_path, exist_ok=True)
+                
+            else:
+                self.log("OK  ", f"Mounting {node}...", Fore.GREEN)
+            time.sleep(0.05) # Hızlı ama havalı bir akış için
+
+    def verify_integrity(self):
+        self.log("INFO", "Verifying system integrity...")
+        # diskmanager kullanarak bir deneme yazması yap
+        try:
+            test_file = os.path.join(self.root_path, "../dev/vfs_check")
+            dm.do(test_file)
+            dm.ds(test_file)
+            self.log("OK  ", "Root partition is Read/Write.", Fore.GREEN)
+        except Exception as e:
+            self.log("PANIC", f"Filesystem integrity compromised: {e}", Fore.RED)
+            return False
+        return True
+
+    def mount_users(self):
+        # giris.py ve addu.py'nin kullandığı yolu kontrol et
+        user_path = os.path.join(self.root_path, "set/secret/ring/0/")
+        if os.path.exists(user_path):
+            users = [f for f in os.listdir(user_path) if f.endswith(".usr")]
+            user_count = len(users)
+            self.log("INFO", f"Loaded {user_count} user profiles from vault.", Fore.MAGENTA)
+
+def main():
+    kinetic = KineticRootFS()
+    kinetic.boot_sequence()
+    
+    if kinetic.verify_integrity():
+        kinetic.mount_users()
+        print(f"\n{Fore.GREEN}{Style.BRIGHT}RootFS Ready. A.net System is STABLE.{Style.RESET_ALL}\n")
+        time.sleep(0.5)
+        os.system("py ../kernel.py" if os.name == 'nt' else "python3 ../kernel.py")
+    else:
+        print(f"{Fore.RED}{Style.BRIGHT}CRITICAL FAILURE: System cannot mount RootFS.{Style.RESET_ALL}")
+        exit(1)
+
+if __name__ == "__main__":
+    main()
